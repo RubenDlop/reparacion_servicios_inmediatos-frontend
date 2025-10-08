@@ -1,0 +1,58 @@
+/* ===== Swiper primero ===== */
+@import "swiper/css";
+@import "swiper/css/pagination";
+
+/* ===== Tailwind ===== */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========== Reset FULL-BLEED y correcciones de “espacio blanco” ========== */
+html, body, #app { height: 100%; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  overflow-x: hidden;          /* Evita franja blanca por desbordes horizontales */
+}
+
+/* ❌ Quitar límites y centrado heredados */
+body {
+  /* antes: display:flex; place-items:center; */
+  display: block;
+  min-height: 100dvh;          /* mejor que 100vh en móviles con barras */
+}
+
+/* ❌ Elimina “container” fijo y centrado del root */
+#app {
+  /* antes: max-width/margin/padding/text-align */
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: initial;
+}
+
+/* 🛑 Evita colapso de márgenes que crea huecos arriba/abajo */
+section, main, header, footer {
+  display: flow-root;          /* equivalente a usar `isolate`/`overflow-hidden` */
+}
+
+/* 🖼️ Medios sin “espacio de línea” extra y responsivos */
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 🌫️ Seguridad por si sombras/blur empujan layout */
+* {
+  box-sizing: border-box;
+}
+
+/* (Opcional) Si usas navbar fijo y quieres compensar desde CSS puro:
+:root { --nav-h: 56px; }
+@media (min-width: 768px) { :root { --nav-h: 72px; } }
+main { padding-top: var(--nav-h); }
+*/

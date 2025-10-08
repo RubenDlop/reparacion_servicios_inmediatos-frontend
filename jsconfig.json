@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "target": "ES2022",
+    "strict": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "types": ["vite/client", "svelte"],
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.svelte", "src/**/*.js", "src/**/*.ts"]
+}
