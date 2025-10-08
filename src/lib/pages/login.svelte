@@ -1,5 +1,6 @@
 <script>
-  import { link } from 'svelte-spa-router';
+  import { link, push } from 'svelte-spa-router';
+  import { login as loginRequest } from '../api/auth.js';
 
   // Props opcionales
   export let brand = 'RIB';
@@ -13,6 +14,7 @@
   let showPass = false;
   let loading = false;
   let message = '';
+  let authData = null;
 
   // Validaciones simples (UI)
   const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -21,19 +23,73 @@
   async function handleLogin(e) {
     e.preventDefault();
     message = '';
+    authData = null;
 
     if (!emailOk(email) || !passOk(password)) {
       message = 'Verifica tu correo y una contraseña de al menos 6 caracteres.';
       return;
     }
 
-    // Simula carga (solo visual)
     loading = true;
-    await new Promise(r => setTimeout(r, 1200));
-    loading = false;
 
-    // Aquí luego conectarás tu auth real
-    message = '✅ Interfaz lista. Conecta tu backend para continuar.';
+    try {
+      const { response, data } = await loginRequest(email, password);
+
+      if (!response.ok) {
+        const detail = data?.detail ?? data?.message ?? data?.error ?? data?.errors;
+        let errorMessage = 'Correo o contraseña incorrectos. Intenta de nuevo.';
+
+        if (Array.isArray(detail)) {
+          const joined = detail
+            .map((item) => {
+              if (typeof item === 'string') return item;
+              if (item?.msg) return item.msg;
+              if (item?.message) return item.message;
+              return null;
+            })
+            .filter(Boolean)
+            .join(' ');
+          if (joined) {
+            errorMessage = joined;
+          }
+        } else if (detail && typeof detail === 'object') {
+          errorMessage = detail.msg ?? detail.message ?? JSON.stringify(detail);
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        }
+
+        message = errorMessage;
+        return;
+      }
+
+      authData = data;
+      message = '';
+
+      if (typeof window !== 'undefined' && data) {
+        const hasTokens = Boolean(
+          data?.access_token ?? data?.refresh_token ?? data?.token ?? data?.tokens
+        );
+
+        if (hasTokens) {
+          const storageKey = 'auth';
+          const targetStorage = remember ? window.localStorage : window.sessionStorage;
+          const otherStorage = remember ? window.sessionStorage : window.localStorage;
+
+          otherStorage.removeItem(storageKey);
+          targetStorage.setItem(storageKey, JSON.stringify(data));
+        }
+      }
+
+      email = '';
+      password = '';
+
+      push('/dashboard');
+    } catch (error) {
+      console.error('Error al iniciar sesión:', error);
+      message = 'No se pudo conectar con el servidor. Intenta nuevamente más tarde.';
+    } finally {
+      loading = false;
+    }
   }
 </script>
 
