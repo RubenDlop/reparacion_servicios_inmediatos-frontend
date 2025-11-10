@@ -1,5 +1,5 @@
 <script>
-  import { link } from 'svelte-spa-router'; // 👈 usar en enlaces internos
+  import { push } from 'svelte-spa-router';         // ❗ sin `link` ni `location`
 
   // Props
   export let brand = 'RIB';
@@ -39,6 +39,9 @@
     alert(`¡Gracias! Te contactaremos a ${value}`);
     email = '';
   }
+
+  // ✅ Navegación sin `use:link`
+  const go = (href) => (e) => { e?.preventDefault?.(); push(href); };
 </script>
 
 <!-- Fondo decorativo superior (onda) -->
@@ -58,7 +61,7 @@
   <div class="relative mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-4 py-12 md:grid-cols-5">
     <!-- Marca & redes -->
     <div class="space-y-5 md:col-span-2">
-      <a href="/" use:link class="group flex items-center gap-3">
+      <a href="/" class="group flex items-center gap-3" on:click={go('/')}>
         <img src={logoSrc} alt={brand}
              class="h-12 w-12 rounded-full object-cover ring-2 ring-white shadow
                     group-hover:scale-[1.02] transition" />
@@ -118,8 +121,7 @@
         <ul class="space-y-2">
           {#each links.empresa as l}
             <li>
-              <a href={l.href} use:link
-                 class="group inline-flex items-center gap-2 rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300">
+              <a href={l.href} class="group inline-flex items-center gap-2 rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300" on:click={go(l.href)}>
                 <span class="h-1.5 w-1.5 rounded-full bg-slate-300 group-hover:bg-blue-600"></span>
                 {l.label}
               </a>
@@ -132,7 +134,7 @@
         <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">Ayuda</h3>
         <ul class="space-y-2">
           {#each links.ayuda as l}
-            <li><a href={l.href} use:link class="rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300">{l.label}</a></li>
+            <li><a href={l.href} class="rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300" on:click={go(l.href)}>{l.label}</a></li>
           {/each}
         </ul>
       </nav>
@@ -141,7 +143,7 @@
         <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">Legal</h3>
         <ul class="space-y-2">
           {#each links.legal as l}
-            <li><a href={l.href} use:link class="rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300">{l.label}</a></li>
+            <li><a href={l.href} class="rounded text-slate-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-slate-300" on:click={go(l.href)}>{l.label}</a></li>
           {/each}
         </ul>
       </nav>
@@ -186,13 +188,15 @@
     <div class="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-3 px-4 py-4 text-sm text-slate-600 dark:text-slate-400 md:flex-row">
       <p>© {year} {brand}. Todos los derechos reservados.</p>
       <div class="flex items-center gap-4">
-        <a href="/privacidad" use:link class="hover:text-blue-700 dark:hover:text-blue-300">Privacidad</a>
-        <a href="/terminos"   use:link class="hover:text-blue-700 dark:hover:text-blue-300">Términos</a>
-        <a href="#top"
-           class="hover:text-blue-700 dark:hover:text-blue-300"
-           on:click|preventDefault={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+        <a href="/privacidad" class="hover:text-blue-700 dark:hover:text-blue-300" on:click={go('/privacidad')}>Privacidad</a>
+        <a href="/terminos"   class="hover:text-blue-700 dark:hover:text-blue-300" on:click={go('/terminos')}>Términos</a>
+
+        <!-- Volver arriba sin hash -->
+        <button type="button"
+          class="hover:text-blue-700 dark:hover:text-blue-300"
+          on:click={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           Volver arriba ↑
-        </a>
+        </button>
       </div>
     </div>
   </div>

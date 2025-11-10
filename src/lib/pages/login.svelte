@@ -1,5 +1,7 @@
 <script>
-  import { link } from 'svelte-spa-router';
+  import { link, push } from 'svelte-spa-router';
+  import { login as loginRequest, setAuth, me } from '../api/auth.js';
+  import { loginSet } from '../stores/auth.js';
 
   // Props opcionales
   export let brand = 'RIB';
@@ -13,27 +15,114 @@
   let showPass = false;
   let loading = false;
   let message = '';
+  let authData = null;
 
   // Validaciones simples (UI)
   const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const passOk  = (v) => v.length >= 6;
 
+  // Sanitiza un destino para evitar URLs externas
+  function sanitizeNext(p) {
+    if (!p || typeof p !== 'string') return '';
+    try {
+      // Solo aceptamos rutas internas que empiecen con "/"
+      return p.startsWith('/') ? p : '';
+    } catch {
+      return '';
+    }
+  }
+
   async function handleLogin(e) {
     e.preventDefault();
     message = '';
+    authData = null;
 
     if (!emailOk(email) || !passOk(password)) {
       message = 'Verifica tu correo y una contraseña de al menos 6 caracteres.';
       return;
     }
 
-    // Simula carga (solo visual)
     loading = true;
-    await new Promise(r => setTimeout(r, 1200));
-    loading = false;
 
-    // Aquí luego conectarás tu auth real
-    message = '✅ Interfaz lista. Conecta tu backend para continuar.';
+    try {
+      const { response, data } = await loginRequest(email, password);
+
+      if (!response.ok) {
+        const detail = data?.detail ?? data?.message ?? data?.error ?? data?.errors;
+        let errorMessage = 'Correo o contraseña incorrectos. Intenta de nuevo.';
+
+        if (Array.isArray(detail)) {
+          const joined = detail
+            .map((item) => {
+              if (typeof item === 'string') return item;
+              if (item?.msg) return item.msg;
+              if (item?.message) return item.message;
+              return null;
+            })
+            .filter(Boolean)
+            .join(' ');
+          if (joined) errorMessage = joined;
+        } else if (detail && typeof detail === 'object') {
+          errorMessage = detail.msg ?? detail.message ?? JSON.stringify(detail);
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        }
+
+        message = errorMessage;
+        return;
+      }
+
+      authData = data;
+      message = '';
+
+      // 1) Guardar credenciales/tokens en storage unificado
+      setAuth(data, remember);
+
+      // 2) Actualizar store global con el usuario
+      let user = data?.user;
+      if (!user) {
+        try {
+          const { response: r2, data: d2 } = await me();
+          if (r2?.ok) user = d2;
+        } catch {}
+      }
+      loginSet(user ?? null);
+
+      // 3) Limpiar UI
+      email = '';
+      password = '';
+
+      // 4) Redirigir
+      const params = new URLSearchParams(window.location.search);
+      let next = sanitizeNext(params.get('next'));
+
+      // Si no viene next, elige destino por rol
+      // - superusuario → /admin
+      // - usuario normal → /dashboard
+      const defaultNext = user?.is_superuser ? '/admin' : '/dashboard';
+
+      // Si el next apunta a páginas de auth o es vacío, usa defaultNext
+      const isAuthPage =
+        next === '/login' || next === '/registro' || next === '/recuperar';
+
+      // También si next es "/" preferimos el destino por rol
+      if (!next || isAuthPage || next === '/') {
+        next = defaultNext;
+      }
+
+      // Seguridad extra: si el usuario ES admin y next NO es /admin
+      // pero venía vacío o apuntaba a dashboard, fuerza /admin.
+      if (user?.is_superuser && (next === '/dashboard' || next === '/')) {
+        next = '/admin';
+      }
+
+      push(next);
+    } catch (error) {
+      console.error('Error al iniciar sesión:', error);
+      message = 'No se pudo conectar con el servidor. Intenta nuevamente más tarde.';
+    } finally {
+      loading = false;
+    }
   }
 </script>
 
@@ -43,18 +132,15 @@
   style={`background-image:url('${bgImage}'); background-size:cover; background-position:center;`}
   aria-label="Fondo de inicio de sesión"
 >
-  <!-- Capa oscura + degradado -->
   <div class="absolute inset-0 bg-slate-900/50"></div>
   <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-slate-900/20 to-slate-900/60"></div>
 
-  <!-- Contenido centrado -->
   <div class="relative z-10 mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4">
     <div
       class="w-full max-w-md rounded-2xl border border-white/15 bg-white/80 p-6 shadow-2xl backdrop-blur-xl
              dark:bg-slate-900/70 dark:border-white/10 md:p-8"
       role="dialog" aria-labelledby="login-title"
     >
-      <!-- Marca -->
       <div class="mb-6 flex items-center justify-center gap-3">
         <img src={logoSrc} alt={brand} class="h-12 w-12 rounded-full object-contain ring-1 ring-white/20" />
         <div class="text-center">
@@ -63,14 +149,11 @@
         </div>
       </div>
 
-      <!-- Título -->
       <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white text-center">
         Iniciar sesión
       </h2>
 
-      <!-- Formulario -->
       <form class="mt-6 space-y-4" on:submit|preventDefault={handleLogin}>
-        <!-- Email -->
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
             Correo electrónico
@@ -100,7 +183,6 @@
           </p>
         </div>
 
-        <!-- Password -->
         <div>
           <label for="password" class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
             Contraseña
@@ -127,10 +209,8 @@
               aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {#if showPass}
-                <!-- eye-off -->
                 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="m3 4.27 1.28-1.27 18 18-1.27 1.27-3.2-3.2A10.73 10.73 0 0 1 12 20c-5.05 0-9.38-3.2-11-8 1-2.95 3.12-5.35 5.77-6.67L3 4.27Zm6.82 6.82a2.22 2.22 0 0 0 3.06 3.06l-3.06-3.06ZM12 6c5.05 0 9.38 3.2 11 8-.64 1.88-1.79 3.54-3.27 4.87l-1.43-1.43A8.67 8.67 0 0 0 20.88 14c-1.46-3.67-4.93-6-8.88-6-1 0-1.96.13-2.86.38L7.85 6.1A10.72 10.72 0 0 1 12 6Z"/></svg>
               {:else}
-                <!-- eye -->
                 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5c5.05 0 9.38 3.2 11 8-1.62 4.8-5.95 8-11 8s-9.38-3.2-11-8c1.62-4.8 5.95-8 11-8Zm0 3a5 5 0 1 0 .001 10.001A5 5 0 0 0 12 8Z"/></svg>
               {/if}
             </button>
@@ -147,7 +227,6 @@
           </div>
         </div>
 
-        <!-- Mensaje -->
         {#if message}
           <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800
                       dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
@@ -155,7 +234,6 @@
           </div>
         {/if}
 
-        <!-- Botón -->
         <button
           type="submit"
           class="group relative inline-flex w-full items-center justify-center gap-2 rounded-xl
@@ -178,14 +256,12 @@
         </button>
       </form>
 
-      <!-- Separador -->
       <div class="my-6 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
         <div class="h-px flex-1 bg-slate-200/60 dark:bg-white/10"></div>
         O continuar con
         <div class="h-px flex-1 bg-slate-200/60 dark:bg-white/10"></div>
       </div>
 
-      <!-- Botones sociales (placeholder visual) -->
       <div class="grid grid-cols-3 gap-3">
         <button class="rounded-xl border border-slate-300 bg-white/70 px-3 py-2 text-sm text-slate-700
                        hover:bg-slate-50 active:scale-95 dark:bg-slate-800/60 dark:text-white dark:border-slate-600">
@@ -201,7 +277,6 @@
         </button>
       </div>
 
-      <!-- Registro -->
       <p class="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">
         ¿No tienes una cuenta?
         <a href="/registro" use:link class="font-medium text-indigo-600 hover:underline"> Regístrate aquí</a>.

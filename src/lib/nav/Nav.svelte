@@ -1,14 +1,12 @@
 <script>
-  import { link, location } from 'svelte-spa-router';
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { location, push } from 'svelte-spa-router';
+  import { onDestroy, onMount, createEventDispatcher } from 'svelte';
+  import { session, isLoggedIn } from '../stores/auth.js';
 
   const dispatch = createEventDispatcher();
 
-  // Props
   export let brand = 'RIB';
   export let logoSrc = '/logo.png';
-
-  // Links
   export let links = {
     empresa: [
       { href: '/',           label: 'Inicio'     },
@@ -27,25 +25,26 @@
     ]
   };
 
-  // Demo auth (cámbialo por tu store real)
-  export let isLogged = false;
-  export let userName = 'Invitado';
-  function logout() { isLogged = false; dispatch('logout'); }
+  // Estado desde stores
+  $: logged = $isLoggedIn;
+  $: userName = $session?.user?.full_name ?? $session?.user?.email ?? 'Invitado';
 
   let menuOpen = false;
+  let accountOpen = false;
 
-  // Cierra el menú al navegar
+  // Detecta cambios de ruta para cerrar menús
   let prevPath = '';
-  const unsubscribe = location.subscribe(($loc) => {
-    if ($loc !== prevPath && menuOpen) menuOpen = false;
-    prevPath = $loc;
+  const unsub = location.subscribe(($loc) => {
+    if ($loc !== prevPath) {
+      menuOpen = false;
+      accountOpen = false;
+      prevPath = $loc;
+    }
   });
-  onMount(() => () => unsubscribe());
+  onDestroy(() => unsub());
 
-  // Ruta actual reactiva
+  // Ruta actual y helpers
   $: current = $location;
-
-  // Helpers de ruta
   const normalize = (p) => {
     if (!p) return '/';
     try { if (p.startsWith('http')) { const u = new URL(p); p = u.pathname + u.search + u.hash; } } catch {}
@@ -59,9 +58,59 @@
     return a === b || a.startsWith(b + '/');
   };
 
-  // 👉 Cuando estamos en /login, /registro o /recuperar, mostramos SOLO “Inicio”
+  // Detecta rutas de auth
   $: path = normalize(current);
-  $: authRoute = path === '/login' || path === '/registro' || path === '/recuperar';
+  $: authRoute = path.startsWith('/login') || path.startsWith('/registro') || path.startsWith('/recuperar');
+
+  function logout() { dispatch('logout'); accountOpen = false; }
+
+  // Navegación SPA
+  const go = (href) => (e) => { e?.preventDefault?.(); push(href); };
+
+  // --------- DETECCIÓN DE PERFIL DE TÉCNICO (sin http.js) ----------
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+
+  function authHeaders() {
+    try {
+      const raw = localStorage.getItem('auth') ?? sessionStorage.getItem('auth');
+      const token = raw ? JSON.parse(raw).access_token : null;
+      const h = { 'Content-Type': 'application/json' };
+      if (token) h.Authorization = `Bearer ${token}`;
+      return h;
+    } catch { return { 'Content-Type': 'application/json' }; }
+  }
+
+  let tech = null;          // objeto perfil si existe
+  let techLoading = false;  // por si quieres mostrar loader algún día
+
+  async function checkTechProfile() {
+    if (!logged) { tech = null; return; }
+    techLoading = true;
+    try {
+      const res = await fetch(`${API_BASE_URL}/technicians/me`, { headers: authHeaders() });
+      if (res.status === 200) {
+        const ct = res.headers.get('content-type') || '';
+        tech = ct.includes('application/json') ? await res.json() : null;
+      } else if (res.status === 404) {
+        tech = null; // no tiene perfil aún
+      } else {
+        tech = null; // otro error: lo tratamos como que no tiene
+      }
+    } catch {
+      tech = null;
+    } finally {
+      techLoading = false;
+    }
+  }
+
+  // Chequea al montar y cuando cambia el login o el usuario
+  let lastUserId = null;
+  onMount(() => { if (logged) checkTechProfile(); });
+  $: if (logged && $session?.user?.id !== lastUserId) {
+    lastUserId = $session?.user?.id ?? null;
+    checkTechProfile();
+  }
+  $: if (!logged) { tech = null; lastUserId = null; }
 </script>
 
 <style>
@@ -91,50 +140,91 @@
   <div class="container">
     <div class="h-14 flex items-center justify-between">
       <!-- Brand -->
-      <a href="/" use:link class="brand" aria-label="Inicio">
+      <a href="/" class="brand" aria-label="Inicio" on:click={go('/')}>
         <img src={logoSrc} alt={brand} />
         <span>{brand}</span>
       </a>
 
-      <!-- Desktop menu -->
+      <!-- Desktop -->
       <div class="hidden md:flex items-center gap-1">
-        <!-- Empresa -->
-        {#if !authRoute}
-          {#each links.empresa as item}
-            <a href={item.href} use:link class="btn btn-ghost" class:active={isActive(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
-              {item.label}
-            </a>
-          {/each}
+        {#if authRoute}
+          <!-- En rutas de auth solo Inicio -->
+          <a href="/" class="btn btn-ghost" class:active={isActive('/')} on:click={go('/')}>Inicio</a>
 
-          <div class="mx-2 opacity-30">|</div>
+        {:else if logged}
+          <!-- Nav LOGUEADO -->
+          <a href="/dashboard"
+             class="btn btn-ghost"
+             class:active={isActive('/dashboard')}
+             aria-current={isActive('/dashboard') ? 'page' : undefined}
+             on:click={go('/dashboard')}>
+            Dashboard
+          </a>
 
-          <!-- Ayuda -->
-          {#each links.ayuda as item}
-            <a href={item.href} use:link class="btn btn-ghost" class:active={isActive(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
-              {item.label}
-            </a>
-          {/each}
+          <a href="/solicitar" class="btn btn-primary ml-1" on:click={go('/solicitar')}>Pedir técnico</a>
 
-          <!-- Auth desktop -->
-          {#if !isLogged}
-            <a href="/login" use:link class="btn btn-outline ml-2">Iniciar sesión</a>
-            <a href="/registro" use:link class="btn btn-primary ml-2">Registrarse</a>
+          {#if tech}
+            <!-- Tiene perfil de técnico -->
+            <a href="/mis-trabajos" class="btn btn-ghost" class:active={isActive('/mis-trabajos')} on:click={go('/mis-trabajos')}>Mis trabajos</a>
+            <a href="/perfil-tecnico" class="btn btn-ghost" class:active={isActive('/perfil-tecnico')} on:click={go('/perfil-tecnico')}>Perfil técnico</a>
           {:else}
-            <div class="relative ml-2">
-              <button class="btn btn-outline" aria-haspopup="menu" aria-expanded="false">
-                <span class="avatar">{userName?.[0]?.toUpperCase() || 'U'}</span>
-                <span class="ml-2">{userName}</span>
-              </button>
+            <!-- NO tiene perfil todavía -->
+            <a href="/soy-tecnico" class="btn btn-outline ml-1" on:click={go('/soy-tecnico')}>Soy técnico</a>
+          {/if}
+
+          <div class="relative ml-2">
+            <button class="btn btn-outline flex items-center"
+                    aria-haspopup="menu" aria-expanded={accountOpen}
+                    on:click={() => (accountOpen = !accountOpen)}>
+              <span class="avatar">{userName?.[0]?.toUpperCase() || 'U'}</span>
+              <span class="ml-2 truncate max-w-[12rem]">{userName}</span>
+            </button>
+            {#if accountOpen}
               <div class="menu mt-2">
-                <a href="/cuenta" use:link>Mi cuenta</a>
-                <a href="/mis-trabajos" use:link>Mis trabajos</a>
+                <a href="/cuenta" on:click={go('/cuenta')}>Mi cuenta</a>
+                {#if tech}
+                  <a href="/perfil-tecnico" on:click={go('/perfil-tecnico')}>Perfil técnico</a>
+                {:else}
+                  <a href="/soy-tecnico" on:click={go('/soy-tecnico')}>Quiero ser técnico</a>
+                {/if}
                 <button on:click={logout}>Cerrar sesión</button>
               </div>
-            </div>
-          {/if}
+            {/if}
+          </div>
+
         {:else}
-          <!-- Solo Inicio cuando estás en /login /registro /recuperar -->
-          <a href="/" use:link class="btn btn-ghost" class:active={isActive('/')}>Inicio</a>
+          <!-- Nav NO LOGUEADO -->
+          {#each links.empresa as item}
+            <a href={item.href}
+               class="btn btn-ghost"
+               class:active={isActive(item.href)}
+               aria-current={isActive(item.href) ? 'page' : undefined}
+               on:click={go(item.href)}>
+              {item.label}
+            </a>
+          {/each}
+          <div class="mx-2 opacity-30">|</div>
+          {#each links.ayuda as item}
+            <a href={item.href}
+               class="btn btn-ghost"
+               class:active={isActive(item.href)}
+               aria-current={isActive(item.href) ? 'page' : undefined}
+               on:click={go(item.href)}>
+              {item.label}
+            </a>
+          {/each}
+          <div class="mx-2 opacity-30">|</div>
+          {#each links.legal as item}
+            <a href={item.href}
+               class="btn btn-ghost"
+               class:active={isActive(item.href)}
+               aria-current={isActive(item.href) ? 'page' : undefined}
+               on:click={go(item.href)}>
+              {item.label}
+            </a>
+          {/each}
+          <a href="/login" class="btn btn-outline ml-2" on:click={go('/login')}>Iniciar sesión</a>
+          <a href="/registro" class="btn btn-primary ml-2" on:click={go('/registro')}>Registrarse</a>
         {/if}
       </div>
 
@@ -145,59 +235,53 @@
     </div>
   </div>
 
-  <!-- Mobile menu -->
+  <!-- Mobile -->
   {#if menuOpen}
     <div class="md:hidden">
       <div class="container pb-3">
-        {#if !authRoute}
+        {#if authRoute}
+          <div class="grid grid-cols-1 gap-2">
+            <a href="/" class="btn btn-ghost" class:active={isActive('/')} on:click={go('/')}>Inicio</a>
+          </div>
+
+        {:else if logged}
+          <div class="grid grid-cols-1 gap-2">
+            <a href="/dashboard" class="btn btn-ghost" class:active={isActive('/dashboard')} on:click={go('/dashboard')}>Dashboard</a>
+            <a href="/solicitar" class="btn btn-primary" on:click={go('/solicitar')}>Pedir técnico</a>
+            {#if tech}
+              <a href="/mis-trabajos" class="btn btn-ghost" class:active={isActive('/mis-trabajos')} on:click={go('/mis-trabajos')}>Mis trabajos</a>
+              <a href="/perfil-tecnico" class="btn btn-ghost" class:active={isActive('/perfil-tecnico')} on:click={go('/perfil-tecnico')}>Perfil técnico</a>
+            {:else}
+              <a href="/soy-tecnico" class="btn btn-outline" on:click={go('/soy-tecnico')}>Soy técnico</a>
+            {/if}
+            <a href="/cuenta" class="btn btn-ghost" on:click={go('/cuenta')}>Mi cuenta</a>
+            <button class="btn btn-ghost" on:click={logout}>Cerrar sesión</button>
+          </div>
+
+        {:else}
           <div class="section-title">Empresa</div>
           <div class="grid grid-cols-2 gap-2">
             {#each links.empresa as item}
-              <a href={item.href} use:link class="btn btn-ghost" class:active={isActive(item.href)}>
-                {item.label}
-              </a>
+              <a href={item.href} class="btn btn-ghost" class:active={isActive(item.href)} on:click={go(item.href)}>{item.label}</a>
             {/each}
           </div>
-
           <div class="divider" />
-
           <div class="section-title">Ayuda</div>
           <div class="grid grid-cols-2 gap-2">
             {#each links.ayuda as item}
-              <a href={item.href} use:link class="btn btn-ghost" class:active={isActive(item.href)}>
-                {item.label}
-              </a>
+              <a href={item.href} class="btn btn-ghost" class:active={isActive(item.href)} on:click={go(item.href)}>{item.label}</a>
             {/each}
           </div>
-
           <div class="divider" />
-
           <div class="section-title">Legal</div>
           <div class="grid grid-cols-2 gap-2">
             {#each links.legal as item}
-              <a href={item.href} use:link class="btn btn-ghost" class:active={isActive(item.href)}>
-                {item.label}
-              </a>
+              <a href={item.href} class="btn btn-ghost" class:active={isActive(item.href)} on:click={go(item.href)}>{item.label}</a>
             {/each}
           </div>
-
-          <div class="divider" />
-
-          <!-- Auth móvil -->
-          {#if !isLogged}
-            <a href="/login" use:link class="btn btn-outline w-full">Iniciar sesión</a>
-            <a href="/registro" use:link class="btn btn-primary w-full mt-2">Registrarse</a>
-          {:else}
-            <a href="/cuenta" use:link class="btn btn-ghost w-full">Mi cuenta</a>
-            <a href="/mis-trabajos" use:link class="btn btn-ghost w-full">Mis trabajos</a>
-            <button class="btn btn-outline w-full mt-2" on:click={logout}>Cerrar sesión</button>
-          {/if}
-        {:else}
-          <!-- Solo Inicio en rutas de auth -->
-          <div class="grid grid-cols-1 gap-2">
-            <a href="/" use:link class="btn btn-ghost" class:active={isActive('/')}>
-              Inicio
-            </a>
+          <div class="grid grid-cols-1 gap-2 mt-2">
+            <a href="/login" class="btn btn-ghost" on:click={go('/login')}>Iniciar sesión</a>
+            <a href="/registro" class="btn btn-primary" on:click={go('/registro')}>Registrarse</a>
           </div>
         {/if}
       </div>

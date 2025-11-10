@@ -1,29 +1,25 @@
 <script>
-  import Router from 'svelte-spa-router';
+  import Router, { location } from 'svelte-spa-router';
   import { routes } from './routes/index.js';
   import Nav from './lib/nav/Nav.svelte';
   import Footer from './lib/footer/Footer.svelte';
   import { onMount } from 'svelte';
+  import { checkAuth, logoutAndClear } from './lib/stores/auth.js';
+
+  function handleLogout() { logoutAndClear(); }
 
   onMount(() => {
-    const fixHash = () => {
-      if (location.hash.startsWith('#/')) {
-        const target = location.hash.slice(1);
-        history.replaceState(null, '', target);
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    };
-    fixHash();
-    window.addEventListener('hashchange', fixHash);
-    return () => window.removeEventListener('hashchange', fixHash);
+    checkAuth(); // verifica token al cargar la app
   });
 </script>
 
-<Nav logoSrc="/logo.png" brand="RIB" />
+<!-- ✅ SOLO un nav -->
+<Nav logoSrc="/logo.png" brand="RIB" on:logout={handleLogout} />
 
-<!-- ❌ antes: class="pt-14" -->
 <main>
-  <Router {routes} useHash={false} />
+  {#key $location}
+    <Router {routes} useHash={false} restoreScrollState={true} />
+  {/key}
 </main>
 
 <Footer brand="RIB" logoSrc="/logo.png" />
