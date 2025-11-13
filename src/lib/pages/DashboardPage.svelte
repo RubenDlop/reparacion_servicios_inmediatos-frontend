@@ -18,23 +18,23 @@
 
   onMount(async () => {
     loading = true; errorMsg = '';
-    // 1) usuario
+    // 1) sesión
     const { response: r1, data: d1 } = await me();
     if (r1?.status === 401) { logout(); return; }
     if (!r1?.ok) { errorMsg = 'No se pudo cargar tu sesión.'; loading = false; return; }
     user = d1;
 
-    // 2) datos dashboard (en paralelo)
+    // 2) datos del dashboard (opcional para admin también)
     const [reqRes, asgRes] = await Promise.all([
       fetchRequests({ size: 5 }),
       fetchAssignments({ size: 5 })
     ]);
 
-    if (reqRes.response?.ok) {
+    if (reqRes?.response?.ok) {
       kpis.requestsTotal = reqRes.total ?? 0;
       lastRequests = reqRes.items ?? [];
     }
-    if (asgRes.response?.ok) {
+    if (asgRes?.response?.ok) {
       kpis.assignmentsTotal = asgRes.total ?? 0;
       lastAssignments = asgRes.items ?? [];
     }
@@ -42,13 +42,14 @@
     loading = false;
   });
 
+  const isAdmin = () => !!user?.is_superuser;
+
   function fmtDate(v) {
     try { return new Date(v).toLocaleString(); } catch { return v ?? '—'; }
   }
 </script>
 
 <div class="min-h-screen bg-slate-950 text-white/90">
-
   <main class="mx-auto max-w-7xl px-6 py-8">
     {#if loading}
       <div class="grid gap-6 md:grid-cols-3">
@@ -62,9 +63,56 @@
       {:else}
         <!-- Saludo -->
         <section class="mb-6">
-          <h1 class="text-2xl font-bold">Hola{user?.full_name ? `, ${user.full_name}` : ''} 👋</h1>
-          <p class="text-white/70">Bienvenido a tu panel. Aquí verás tus solicitudes y asignaciones recientes.</p>
+          <h1 class="text-2xl font-bold">
+            Hola{user?.full_name ? `, ${user.full_name}` : ''} 👋
+          </h1>
+          <p class="text-white/70">
+            {#if isAdmin()}
+              Estás en el panel del administrador. Usa los accesos rápidos de abajo.
+            {:else}
+              Bienvenido a tu panel. Aquí verás tus solicitudes y asignaciones recientes.
+            {/if}
+          </p>
         </section>
+
+        {#if isAdmin()}
+          <!-- Accesos rápidos de ADMIN -->
+          <section class="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <a href="/admin" use:link class="card-btn">
+              <div class="text-sm text-white/70">Administración</div>
+              <div class="mt-1 text-xl font-semibold">Panel principal</div>
+              <p class="mt-2 text-sm text-white/70">Resumen y módulos.</p>
+            </a>
+            <a href="/admin/roles" use:link class="card-btn">
+              <div class="text-sm text-white/70">Roles & Permisos</div>
+              <div class="mt-1 text-xl font-semibold">Gestionar ACL</div>
+              <p class="mt-2 text-sm text-white/70">Crear, editar, consultar, eliminar (soft-delete).</p>
+            </a>
+            <a href="/admin/usuarios" use:link class="card-btn">
+              <div class="text-sm text-white/70">Usuarios</div>
+              <div class="mt-1 text-xl font-semibold">CRUD de usuarios</div>
+              <p class="mt-2 text-sm text-white/70">Con rol y ≥4 atributos.</p>
+            </a>
+            <a href="/principal" use:link class="card-btn">
+              <div class="text-sm text-white/70">Presentación</div>
+              <div class="mt-1 text-xl font-semibold">Página Principal</div>
+              <p class="mt-2 text-sm text-white/70">Información del proyecto (requisito).</p>
+            </a>
+          </section>
+
+          <!-- Atajo a Reporte (demo no funcional) -->
+          <section class="mb-10">
+            <div class="rounded-2xl border border-white/10 bg-white/10 p-5 flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-semibold">Reporte (demo)</h2>
+                <p class="text-white/70 text-sm">Formulario + tabla sin backend (según requisito del parcial).</p>
+              </div>
+              <a href="/reporte" use:link class="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm hover:bg-white/20">
+                Abrir reporte
+              </a>
+            </div>
+          </section>
+        {/if}
 
         <!-- KPIs -->
         <section class="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -156,11 +204,23 @@
 </div>
 
 <style>
-  /* util para cortar texto */
   .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  .card-btn {
+    display: block;
+    border-radius: 1rem;
+    border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.08);
+    padding: 1.25rem;
+    transition: transform .12s ease, background .12s ease, border .12s ease;
+  }
+  .card-btn:hover {
+    transform: translateY(-2px);
+    background: rgba(255,255,255,.12);
+    border-color: rgba(255,255,255,.2);
   }
 </style>

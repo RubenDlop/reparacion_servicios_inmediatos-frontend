@@ -169,7 +169,7 @@
             <a href="/perfil-tecnico" class="btn btn-ghost" class:active={isActive('/perfil-tecnico')} on:click={go('/perfil-tecnico')}>Perfil técnico</a>
           {:else}
             <!-- NO tiene perfil todavía -->
-            <a href="/soy-tecnico" class="btn btn-outline ml-1" on:click={go('/soy-tecnico')}>Soy técnico</a>
+            <a href="/soy-tecnico" class="btn btn-outline ml-1" on:click={go('/soy-tecnico')}>Quiero ser tecnico</a>
           {/if}
 
           <div class="relative ml-2">

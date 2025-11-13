@@ -17,6 +17,12 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
+    "@smui/button": "^8.0.3",
+    "@smui/card": "^8.0.3",
+    "@smui/dialog": "^8.0.3",
+    "@smui/icon-button": "^8.0.3",
+    "@smui/linear-progress": "^8.0.3",
+    "@smui/textfield": "^8.0.3",
     "leaflet": "^1.9.4",
     "svelte-spa-router": "^4.0.1",
     "swiper": "^11.2.10"
